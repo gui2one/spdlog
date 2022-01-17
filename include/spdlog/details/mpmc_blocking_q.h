@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #pragma once
 
 //
@@ -14,11 +15,30 @@
 #include <condition_variable>
 #include <mutex>
 #include <queue>
+=======
+// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.
+// Distributed under the MIT License (http://opensource.org/licenses/MIT)
+
+#pragma once
+
+// multi producer-multi consumer blocking queue.
+// enqueue(..) - will block until room found to put the new message.
+// enqueue_nowait(..) - will return immediately with false if no room left in
+// the queue.
+// dequeue_for(..) - will block until the queue is not empty or timeout have
+// passed.
+
+#include <spdlog/details/circular_q.h>
+
+#include <condition_variable>
+#include <mutex>
+>>>>>>> temp
 
 namespace spdlog {
 namespace details {
 
 template<typename T>
+<<<<<<< HEAD
 class mpmc_bounded_queue
 {
 public:
@@ -28,17 +48,34 @@ public:
     {
     }
 
+=======
+class mpmc_blocking_queue
+{
+public:
+    using item_type = T;
+    explicit mpmc_blocking_queue(size_t max_items)
+        : q_(max_items)
+    {}
+
+#ifndef __MINGW32__
+>>>>>>> temp
     // try to enqueue and block if no room left
     void enqueue(T &&item)
     {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
+<<<<<<< HEAD
             pop_cv_.wait(lock, [this] { return this->q_.size() < this->max_items_; });
             q_.push(std::move(item));
+=======
+            pop_cv_.wait(lock, [this] { return !this->q_.full(); });
+            q_.push_back(std::move(item));
+>>>>>>> temp
         }
         push_cv_.notify_one();
     }
 
+<<<<<<< HEAD
     // try to enqueue and return immdeialty false if no room left
     bool enqueue_nowait(T &&item)
     {
@@ -55,11 +92,25 @@ public:
     }
 
     // try to dequeue item. if no item found. wait upto timeout and try again
+=======
+    // enqueue immediately. overrun oldest message in the queue if no room left.
+    void enqueue_nowait(T &&item)
+    {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex_);
+            q_.push_back(std::move(item));
+        }
+        push_cv_.notify_one();
+    }
+
+    // try to dequeue item. if no item found. wait up to timeout and try again
+>>>>>>> temp
     // Return true, if succeeded dequeue item, false otherwise
     bool dequeue_for(T &popped_item, std::chrono::milliseconds wait_duration)
     {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
+<<<<<<< HEAD
             if (!push_cv_.wait_for(lock, wait_duration, [this] { return this->q_.size() > 0; }))
             {
                 return false;
@@ -68,10 +119,56 @@ public:
             popped_item = std::move(q_.front());
             q_.pop();
         }
+=======
+            if (!push_cv_.wait_for(lock, wait_duration, [this] { return !this->q_.empty(); }))
+            {
+                return false;
+            }
+            popped_item = std::move(q_.front());
+            q_.pop_front();
+        }
         pop_cv_.notify_one();
         return true;
     }
 
+#else
+    // apparently mingw deadlocks if the mutex is released before cv.notify_one(),
+    // so release the mutex at the very end each function.
+
+    // try to enqueue and block if no room left
+    void enqueue(T &&item)
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        pop_cv_.wait(lock, [this] { return !this->q_.full(); });
+        q_.push_back(std::move(item));
+        push_cv_.notify_one();
+    }
+
+    // enqueue immediately. overrun oldest message in the queue if no room left.
+    void enqueue_nowait(T &&item)
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        q_.push_back(std::move(item));
+        push_cv_.notify_one();
+    }
+
+    // try to dequeue item. if no item found. wait up to timeout and try again
+    // Return true, if succeeded dequeue item, false otherwise
+    bool dequeue_for(T &popped_item, std::chrono::milliseconds wait_duration)
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        if (!push_cv_.wait_for(lock, wait_duration, [this] { return !this->q_.empty(); }))
+        {
+            return false;
+        }
+        popped_item = std::move(q_.front());
+        q_.pop_front();
+>>>>>>> temp
+        pop_cv_.notify_one();
+        return true;
+    }
+
+<<<<<<< HEAD
 private:
     size_t max_items_;
     std::mutex queue_mutex_;
@@ -79,6 +176,27 @@ private:
     std::condition_variable pop_cv_;
 
     std::queue<T> q_;
+=======
+#endif
+
+    size_t overrun_counter()
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        return q_.overrun_counter();
+    }
+
+    size_t size()
+    {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        return q_.size();
+    }
+
+private:
+    std::mutex queue_mutex_;
+    std::condition_variable push_cv_;
+    std::condition_variable pop_cv_;
+    spdlog::details::circular_q<T> q_;
+>>>>>>> temp
 };
 } // namespace details
 } // namespace spdlog
